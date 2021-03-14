@@ -1,0 +1,123 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © legroszach
+//@version=4
+study("BipBap Cipher", overlay=false)
+
+ha_t = heikinashi(syminfo.tickerid)
+ha_close = security(ha_t, timeframe.period, close)
+ha_hlc3 = security(ha_t, timeframe.period, hlc3)
+
+map(input, inputMin, inputMax, outputMin, outputMax) =>
+    outputMin + ((outputMax - outputMin) / (inputMax - inputMin)) * (input - inputMin)
+
+color noColor = na
+zero = plot(0, title="Zero", color=noColor)
+
+
+// Stochastic Oscillator
+stochObLevel1 = 60
+stochObLevel2 = 53
+stochOsLevel1 = -60
+stochOsLevel2 = -53
+
+n1 = input(5, "STOCH Channel Length")
+n2 = input(3, "STOCH Average Length")
+stochSmooting = input(3, "STOCH Smoothing")
+ 
+ap = ha_hlc3 
+esa = ema(ap, n1)
+d = ema(abs(ap - esa), n1)
+ci = (ap - esa) / (0.015 * d)
+tci = ema(ci, n2)
+ 
+wt1 = tci
+wt2 = sma(wt1, stochSmooting)
+
+plot(wt1, color=#54b1e3, style=4, title="STOCH")
+plot(wt2, color=#00398a, transp=10, style=4, title="STOCH EMA")
+// Cross
+plot(crossover(wt1, wt2) ? wt2 : na, style=6, color=color.green, title="Cross over", linewidth=2)
+plot(crossunder(wt1, wt2) ? wt2 : na, style=6, color=color.red, title="Cross under", linewidth=2)
+// OB & OS levels
+plot(stochObLevel1, color=color.white, title="Overbought level 1", editable=false)
+plot(stochOsLevel1, color=color.white, title="Oversold level 1", editable=false)
+plot(stochObLevel2, color=color.white, style=6, transp=50, title="Overbought level 2", editable=false)
+plot(stochOsLevel2, color=color.white, style=6, transp=50, title="Oversold level 2", editable=false)
+
+
+// MFI
+mfiOsLevel = input(-8, "MFI Oversold level", minval=-50, maxval=0)
+source = ha_hlc3
+mfiLength = input(50, minval=1, title="MFI Period")
+mfiSmooth = input(9, minval=1, title="MFI Smoothing")
+value = high-low
+upper = sum(volume * (change(source) <= 0 ? 0 : value), mfiLength)
+lower = sum(volume * (change(source) >= 0 ? 0 : value), mfiLength)
+mfi = rsi(upper, lower) - 50
+mfi := sma(mfi, mfiSmooth)
+mfiPlot = plot(mfi, title="Money Flow Index", color=mfi>=0 ? color.green : color.red, linewidth=2)
+fill(mfiPlot, zero, color=mfi>=0 ? color.green : color.red, transp=60)
+
+
+// RSI
+rsiObLevel = 70
+rsiOsLevel = 30
+rsiPeriod = input(7, minval=1, title="RSI Period")
+rsiSource = ha_close
+up = rma(max(change(rsiSource), 0), rsiPeriod)
+down = rma(-min(change(rsiSource), 0), rsiPeriod)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+rsi := ema(rsi, 5)
+plot(rsi, color=color.purple, linewidth=2, title="RSI")
+
+
+// VWAP
+fastLength = input(12, minval=1, title="MACD Fast MA Length"), slowLength=input(25,minval=1, title="MACD Slow MA Length")
+signalLength = input(9, title="MACD Signal Length")
+lengthz = input(20, title="Z-VWAP Length")
+lengthStdev = input(25, title="Stdev Length")
+A = input(1.0, minval=-2.0, maxval=2.0, title="MACZ constant A")
+B = input(1.0, minval=-2.0, maxval=2.0, title="MACZ constant B")
+
+calc_zvwap(pds) =>
+	mean = sum(volume*close,pds)/sum(volume,pds)
+	vwapsd = sqrt(sma(pow(close-mean, 2), pds) )
+	(close-mean)/vwapsd
+
+zscore = calc_zvwap(lengthz)
+fastMA = sma(source, fastLength)
+slowMA = sma(source, slowLength)
+macd = fastMA - slowMA
+macz_t=zscore*A+ macd/stdev(source, lengthStdev)*B
+signal=sma(macz_t, signalLength)
+hist=macz_t-signal
+plot(hist*10, color=color.yellow, style=plot.style_area, title="VWAP", transp=50)
+
+
+// indicator weightss
+sm2w = input(0.6, title="SM 2 Weight")
+mfiw = input(0.15, title="MFI Weight")
+rsiw = input(0.35, title="RSI Weight")
+
+// BUY signal
+buySignal(mom, momSmooth, rsi, mfi) =>
+    if crossover(mom, momSmooth) and momSmooth <= -25 and mfi <= -5
+        smval = momSmooth < stochOsLevel1 ? (stochOsLevel2-momSmooth)*sm2w : (stochOsLevel1-momSmooth)*sm2w
+        wsum = smval + (mfiOsLevel-mfi)*mfiw + (rsiOsLevel-rsi)*rsiw
+        wsum
+        if wsum >= 0
+            -90
+        else
+            na
+    else
+        na
+        
+
+p1 = plot(-90, color=noColor, display=display.none)
+p2 = plot(-100, color=noColor, display=display.none)
+fill(p1, p2, color=mfi <= 0 ? color.red : color.green, transp=60)
+
+plot(buySignal(wt1, wt2, rsi, mfi), style=6, color=#00ff26, title="Buy signal", linewidth=3)
+
+// Median line
+hline(0, color=color.white, linestyle=hline.style_dotted)
