@@ -1,7 +1,7 @@
 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © legroszach
 //@version=4
-study("BipBap Cipher", overlay=false)
+study("All-In-One Oscillator", overlay=false)
 
 ha_t = heikinashi(syminfo.tickerid)
 ha_close = security(ha_t, timeframe.period, close)
